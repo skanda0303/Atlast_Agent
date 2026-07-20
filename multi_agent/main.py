@@ -10,43 +10,44 @@ Run with:
   uvicorn multi_agent.main:app --host 0.0.0.0 --port $PORT
 """
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
-# Load environment variables before importing anything that uses them
-_current_dir  = os.path.dirname(os.path.abspath(__file__))
+_current_dir = os.path.dirname(os.path.abspath(__file__))
 _project_root = os.path.abspath(os.path.join(_current_dir, ".."))
 load_dotenv(dotenv_path=os.path.join(_project_root, ".env"))
 
 from multi_agent.config import SERVER_HOST, SERVER_PORT
-from multi_agent.retrieval.ingestion import load_and_index_documents
-from multi_agent.retrieval.retriever import build_retriever
 from multi_agent.api import create_app_with_lifespan
 
-# ── Lifespan: runs AFTER uvicorn binds to port ────────────────────────────────
+
 @asynccontextmanager
 async def lifespan(app):
-    print("[STARTUP] Indexing documents...")
-    chunks = load_and_index_documents()
+    from multi_agent.retrieval.ingestion import load_and_index_documents
+    from multi_agent.retrieval.retriever import build_retriever
 
-    print("[STARTUP] Building hybrid retriever...")
-    retriever = build_retriever(chunks)
+    print("[STARTUP] Preparing document index...")
+    chunks = await asyncio.to_thread(load_and_index_documents)
 
-    # Store on app state so routes can access them
+    print("[STARTUP] Preparing hybrid retriever...")
+    retriever = await asyncio.to_thread(build_retriever, chunks)
+
     app.state.chunks = chunks
     app.state.retriever = retriever
 
     port = int(os.environ.get("PORT", SERVER_PORT))
-    print(f"[STARTUP] Ready — http://{SERVER_HOST}:{port}")
+    print(f"[STARTUP] Ready - http://{SERVER_HOST}:{port}")
     yield
     print("[SHUTDOWN] Cleaning up...")
 
-# ── Create app ────────────────────────────────────────────────────────────────
+
 app = create_app_with_lifespan(lifespan)
 
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.environ.get("PORT", SERVER_PORT))
     uvicorn.run(
         "multi_agent.main:app",
