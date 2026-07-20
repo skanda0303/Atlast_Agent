@@ -7,6 +7,7 @@ import json
 import os
 import time
 from pathlib import Path
+from typing import Callable
 
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,7 +53,17 @@ def _document_summary(path: Path) -> dict:
 
 # Called in: multi_agent/main.py
 def create_app(chunks: list, retriever) -> FastAPI:
-    app = FastAPI(title=f"Multi-Agent RAG Chatbot — Port {SERVER_PORT}")
+    return _build_app(chunks=chunks, retriever=retriever, lifespan=None)
+
+
+# Called in: multi_agent/main.py (lifespan variant)
+def create_app_with_lifespan(lifespan: Callable) -> FastAPI:
+    """Create app that reads chunks/retriever from app.state (set by lifespan)."""
+    return _build_app(chunks=None, retriever=None, lifespan=lifespan)
+
+
+def _build_app(chunks, retriever, lifespan) -> FastAPI:
+    app = FastAPI(title=f"Multi-Agent RAG Chatbot — Port {SERVER_PORT}", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -86,6 +97,7 @@ def create_app(chunks: list, retriever) -> FastAPI:
     # Route: GET /api/documents (FastAPI handler)
     @app.get("/api/documents")
     def list_documents():
+        _chunks = chunks if chunks is not None else getattr(app.state, "chunks", [])
         root = Path(DOCS_DIR)
         root.mkdir(parents=True, exist_ok=True)
         documents = [
@@ -93,7 +105,7 @@ def create_app(chunks: list, retriever) -> FastAPI:
             for path in sorted(root.iterdir(), key=lambda item: item.name.lower())
             if path.is_file() and path.suffix.lower() in _ALLOWED_DOCUMENT_TYPES
         ]
-        return {"documents": documents, "indexed_chunks": len(chunks)}
+        return {"documents": documents, "indexed_chunks": len(_chunks)}
 
     # Route: GET /documents/{name:path} (FastAPI handler)
     @app.get("/documents/{name:path}")
@@ -113,6 +125,8 @@ def create_app(chunks: list, retriever) -> FastAPI:
     ):
         # Called in: multi_agent/api.py (chat - within StreamingResponse)
         async def response_generator():
+            _chunks    = chunks    if chunks    is not None else getattr(app.state, "chunks",    [])
+            _retriever = retriever if retriever is not None else getattr(app.state, "retriever", None)
             t_start = time.perf_counter()
             history_messages = get_recent_messages(req.session_id)
             accumulated_answer: list[str] = []
@@ -120,8 +134,8 @@ def create_app(chunks: list, retriever) -> FastAPI:
                 async for token in supervisor_agent.run_streaming(
                     query=req.message,
                     history_messages=history_messages,
-                    retriever=retriever,
-                    chunks=chunks,
+                    retriever=_retriever,
+                    chunks=_chunks,
                     user_gemini_key=x_gemini_key,
                     user_tavily_key=x_tavily_key,
                 ):
