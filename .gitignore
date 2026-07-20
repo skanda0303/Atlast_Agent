@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Environment & secrets
+.env
+*.env
+
+# Vector DB & uploaded docs (runtime data — not for version control)
+docs_multi/
+chroma_db/
+*.db
+*.sqlite
+
+# Local dev
+.vscode/
+.idea/
+*.log
+
+# HF / Docker (not needed for Render Python deployment)
+Dockerfile
+app.py
+deploy_atlas/
+deploy_git_space/
+deploy_github/
