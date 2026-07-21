@@ -290,16 +290,6 @@
       </div>
       <button class="new-chat" id="new-chat">＋ New conversation</button>
       
-      <div style="height:20px"></div>
-      <div class="eyebrow" style="margin:0 9px 5px;">🔑 API Credentials</div>
-      <div style="padding:0 9px 15px; display:flex; flex-direction:column; gap:6px;">
-        <input type="password" id="user-gemini-key" placeholder="Gemini API Key (Optional)" class="settings-input" />
-        <input type="password" id="user-tavily-key" placeholder="Tavily API Key (Optional)" class="settings-input" />
-        <small style="color:var(--muted); font-size:9px; line-height:1.3;">
-          Keys are stored locally in your browser and sent only in headers.
-        </small>
-      </div>
-
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:11px; padding:0 9px;">
         <div class="eyebrow" style="margin:0;">Recent chats</div>
         <button class="clear-chat-btn" id="clear-chat" title="Clear all history">🗑 Clear</button>
@@ -341,14 +331,6 @@
     };
     setTheme();
 
-    // API Keys logic
-    const geminiInput = document.getElementById("user-gemini-key");
-    const tavilyInput = document.getElementById("user-tavily-key");
-    geminiInput.value = localStorage.getItem("userGeminiKey") || "";
-    tavilyInput.value = localStorage.getItem("userTavilyKey") || "";
-    geminiInput.onchange = (e) => localStorage.setItem("userGeminiKey", e.target.value.trim());
-    tavilyInput.onchange = (e) => localStorage.setItem("userTavilyKey", e.target.value.trim());
-
     function setVoiceUI() { const el = document.getElementById("voice-toggle"); el.classList.toggle("active", voiceEnabled); el.textContent = voiceEnabled ? "◉" : "◌"; el.title = voiceEnabled ? "Voice narration on" : "Voice narration off"; }
     function toggleVoice() { voiceEnabled = !voiceEnabled; localStorage.setItem("voiceEnabled", voiceEnabled); setVoiceUI(); if (window.audioPlayer) { window.audioPlayer.setEnabled(voiceEnabled); } }
     setVoiceUI(); if (window.audioPlayer) window.audioPlayer.setEnabled(voiceEnabled);
@@ -378,9 +360,7 @@
     };
 
     async function send() { const text = input.value.trim(); if (!text || btn.disabled) return; clearWelcome(); if (window.audioPlayer) { window.audioPlayer.reset(); window.audioPlayer.userInteracted(); window.audioPlayer.setEnabled(voiceEnabled); } addMessage("user", text); rememberChat(text); input.value = ""; btn.disabled = true; setStatus("Agents working"); const bubble = addMessage("bot", "Thinking…"); const started = performance.now(); let buffer = ""; let rawBuf = ""; const audioChunks = []; try { 
-      const geminiKey = localStorage.getItem("userGeminiKey") || "";
-      const tavilyKey = localStorage.getItem("userTavilyKey") || "";
-      const res = await fetch("/chat", { method:"POST", headers:{"Content-Type":"application/json", "X-Gemini-Key": geminiKey, "X-Tavily-Key": tavilyKey}, body:JSON.stringify({ session_id:SESSION_ID, message:text, voice_enabled:voiceEnabled }) }); if (!res.ok) throw new Error(`${res.status} ${res.statusText}`); const reader = res.body.getReader(); const decoder = new TextDecoder(); while (true) { const {value,done} = await reader.read(); if (done) break; rawBuf += decoder.decode(value, {stream:true}); let index; while ((index = rawBuf.indexOf("\n")) !== -1) { const line = rawBuf.slice(0,index).trim(); rawBuf = rawBuf.slice(index + 1); if (!line) continue; let event; try { event = JSON.parse(line); } catch { buffer += line + " "; bubble.innerHTML = marked.parse(buffer); continue; } if (event.type === "text") { buffer += event.content || ""; bubble.innerHTML = marked.parse(buffer); messages.scrollTop = messages.scrollHeight; } else if (event.type === "audio" && event.audio) { audioChunks.push(event.audio); if (voiceEnabled && window.audioPlayer) window.audioPlayer.enqueue(event.index, event.audio); } else if (event.type === "error" && event.stage === "supervisor") { buffer += `\n\n_Error: ${event.message || "Agent failed"}_`; bubble.innerHTML = marked.parse(buffer); } } } if (!buffer.trim()) bubble.textContent = "No response received. Try another question."; const seconds = ((performance.now() - started) / 1000).toFixed(1); const meta = document.createElement("div"); meta.className = "msg-meta"; meta.textContent = `Answered in ${seconds}s`; if (audioChunks.length) { const link = document.createElement("a"); link.textContent = "Download audio"; link.href = URL.createObjectURL(new Blob(audioChunks.map(data => Uint8Array.from(atob(data), char => char.charCodeAt(0))), {type:"audio/mpeg"})); link.download = `atlas-response-${Date.now()}.mp3`; meta.appendChild(link); } messages.appendChild(meta); } catch (error) { bubble.textContent = `Could not reach multi-agent server: ${error.message}`; } finally { btn.disabled = false; setStatus("Agents ready"); messages.scrollTop = messages.scrollHeight; } }
+      const res = await fetch("/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ session_id:SESSION_ID, message:text, voice_enabled:voiceEnabled }) }); if (!res.ok) throw new Error(`${res.status} ${res.statusText}`); const reader = res.body.getReader(); const decoder = new TextDecoder(); while (true) { const {value,done} = await reader.read(); if (done) break; rawBuf += decoder.decode(value, {stream:true}); let index; while ((index = rawBuf.indexOf("\n")) !== -1) { const line = rawBuf.slice(0,index).trim(); rawBuf = rawBuf.slice(index + 1); if (!line) continue; let event; try { event = JSON.parse(line); } catch { buffer += line + " "; bubble.innerHTML = marked.parse(buffer); continue; } if (event.type === "text") { buffer += event.content || ""; bubble.innerHTML = marked.parse(buffer); messages.scrollTop = messages.scrollHeight; } else if (event.type === "audio" && event.audio) { audioChunks.push(event.audio); if (voiceEnabled && window.audioPlayer) window.audioPlayer.enqueue(event.index, event.audio); } else if (event.type === "error" && event.stage === "supervisor") { buffer += `\n\n_Error: ${event.message || "Agent failed"}_`; bubble.innerHTML = marked.parse(buffer); } } } if (!buffer.trim()) bubble.textContent = "No response received. Try another question."; const seconds = ((performance.now() - started) / 1000).toFixed(1); const meta = document.createElement("div"); meta.className = "msg-meta"; meta.textContent = `Answered in ${seconds}s`; if (audioChunks.length) { const link = document.createElement("a"); link.textContent = "Download audio"; link.href = URL.createObjectURL(new Blob(audioChunks.map(data => Uint8Array.from(atob(data), char => char.charCodeAt(0))), {type:"audio/mpeg"})); link.download = `atlas-response-${Date.now()}.mp3`; meta.appendChild(link); } messages.appendChild(meta); } catch (error) { bubble.textContent = `Could not reach multi-agent server: ${error.message}`; } finally { btn.disabled = false; setStatus("Agents ready"); messages.scrollTop = messages.scrollHeight; } }
 
     async function clearHistory() { if (window.audioPlayer) window.audioPlayer.reset(); await fetch("/clear", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({session_id:SESSION_ID,message:""}) }).catch(() => {}); localStorage.removeItem("atlasChats"); newChat(); }
     document.getElementById("btn").onclick = send; document.getElementById("voice-toggle").onclick = toggleVoice; document.getElementById("new-chat").onclick = newChat; document.getElementById("viewer-close").onclick = closeViewer; document.getElementById("viewer-backdrop").onclick = closeViewer; document.getElementById("viewer-download").onclick = downloadDocument; input.onkeydown = event => { if (event.key === "Enter") send(); }; document.querySelectorAll(".suggestion").forEach(button => button.onclick = () => { input.value = button.textContent; input.focus(); }); document.getElementById("open-chats").onclick = () => document.getElementById("sidebar").classList.toggle("open"); document.getElementById("open-docs").onclick = () => document.getElementById("right-panel").classList.toggle("open");
